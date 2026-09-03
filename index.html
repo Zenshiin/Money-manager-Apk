@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Money Manager</title>
+<meta name="description" content="Personal money manager">
+<meta name="theme-color" content="#C4956A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Money">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="https://api.iconify.design/twemoji:money-bag.svg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -69,10 +76,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:#8C7B6E}
 .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .legend-val{margin-left:auto;font-weight:500;color:#2C2520}
-@media(max-width:500px){.summary-grid{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.add-form{flex-direction:column}}
+/* Install banner */
+#install-banner{display:none;align-items:center;justify-content:space-between;padding:10px 20px;background:#C4956A;color:#fff;font-size:13px}
+#install-banner button{padding:5px 14px;background:#fff;color:#C4956A;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
+@media(max-width:500px){.summary-grid{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
+<div id="install-banner">
+  💰 Install Money Manager as an app!
+  <button onclick="installApp()">Install</button>
+</div>
 <div class="app">
   <div class="topbar">
     <h1>💰 Money Manager</h1>
@@ -85,7 +99,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="tab" onclick="showPage('goals',this)">Goals</button>
   </div>
 
-  <!-- OVERVIEW -->
   <div class="page active" id="page-dashboard">
     <div class="summary-grid">
       <div class="stat-card"><div class="stat-label">Income</div><div class="stat-val income" id="dash-income">₱0</div></div>
@@ -103,7 +116,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="card"><div class="chart-wrap"><canvas id="trend-chart"></canvas></div></div>
   </div>
 
-  <!-- TRANSACTIONS -->
   <div class="page" id="page-transactions">
     <div class="card" style="padding:14px 16px">
       <div style="font-size:13px;font-weight:500;color:#2C2520;margin-bottom:12px">Add transaction</div>
@@ -121,7 +133,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="card"><div class="tx-list" id="tx-list"></div></div>
   </div>
 
-  <!-- BUDGET -->
   <div class="page" id="page-budget">
     <div class="card">
       <div style="font-size:13px;font-weight:500;color:#2C2520;margin-bottom:14px">Monthly limits</div>
@@ -134,7 +145,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
 
-  <!-- GOALS -->
   <div class="page" id="page-goals">
     <div id="goals-list" style="display:flex;flex-direction:column;gap:10px"></div>
     <div class="card">
@@ -150,12 +160,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 
 <script>
+// PWA Install
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('install-banner').style.display = 'flex';
+});
+function installApp() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(() => {
+    deferredPrompt = null;
+    document.getElementById('install-banner').style.display = 'none';
+  });
+}
+window.addEventListener('appinstalled', () => {
+  document.getElementById('install-banner').style.display = 'none';
+});
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(console.error);
+}
+
 const CAT_COLORS={Food:'#1D9E75',Transport:'#378ADD',Shopping:'#BA7517',Entertainment:'#D85A30',Bills:'#A32D2D',Health:'#3B6D11',Salary:'#1D9E75',Other:'#8C7B6E'};
 const EMOJI={Food:'🍜',Transport:'🚌',Shopping:'🛍️',Entertainment:'🎮',Bills:'💡',Health:'💊',Salary:'💼',Other:'📦'};
-
 function load(k,def){try{return JSON.parse(localStorage.getItem(k))||def;}catch{return def;}}
 function save(k,v){localStorage.setItem(k,JSON.stringify(v));}
-
 let transactions=load('mm-tx',[
   {id:1,desc:'Monthly salary',amount:45000,type:'income',cat:'Salary',date:'2026-09-01'},
   {id:2,desc:'Grocery run',amount:2300,type:'expense',cat:'Food',date:'2026-09-01'},
@@ -163,14 +195,9 @@ let transactions=load('mm-tx',[
   {id:4,desc:'Commute load',amount:400,type:'expense',cat:'Transport',date:'2026-09-02'},
 ]);
 let budgets=load('mm-budgets',{Food:5000,Transport:2000,Entertainment:3000,Bills:3000});
-let goals=load('mm-goals',[
-  {id:1,name:'Emergency fund',target:50000,saved:18500},
-  {id:2,name:'Vacation fund',target:20000,saved:6000},
-]);
-
+let goals=load('mm-goals',[{id:1,name:'Emergency fund',target:50000,saved:18500},{id:2,name:'Vacation fund',target:20000,saved:6000}]);
 let donutChart,trendChart;
 function fmt(n){return '₱'+Math.round(n).toLocaleString();}
-
 function showPage(id,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -181,7 +208,6 @@ function showPage(id,el){
   if(id==='goals')renderGoals();
   if(id==='transactions')renderTransactions();
 }
-
 function addTransaction(){
   const desc=document.getElementById('tx-desc').value.trim();
   const amount=parseFloat(document.getElementById('tx-amount').value);
@@ -195,7 +221,6 @@ function addTransaction(){
   document.getElementById('tx-amount').value='';
   renderTransactions();
 }
-
 function renderTransactions(){
   document.getElementById('tx-list').innerHTML=transactions.slice(0,20).map(t=>`
     <div class="tx-item">
@@ -204,17 +229,14 @@ function renderTransactions(){
       <div class="tx-amount ${t.type==='income'?'pos':'neg'}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</div>
     </div>`).join('');
 }
-
 function setBudget(){
   const cat=document.getElementById('budget-cat').value;
   const limit=parseFloat(document.getElementById('budget-limit').value);
   if(!limit||limit<=0)return;
-  budgets[cat]=limit;
-  save('mm-budgets',budgets);
+  budgets[cat]=limit;save('mm-budgets',budgets);
   document.getElementById('budget-limit').value='';
   renderBudget();
 }
-
 function renderBudget(){
   const now=new Date().toISOString().slice(0,7);
   const spent={};
@@ -222,45 +244,30 @@ function renderBudget(){
   document.getElementById('budget-list').innerHTML=Object.entries(budgets).map(([cat,limit])=>{
     const s=spent[cat]||0,pct=Math.min(100,Math.round(s/limit*100)),over=s>limit;
     const color=over?'#E24B4A':pct>75?'#BA7517':'#1D9E75';
-    return `<div class="budget-item">
-      <div class="budget-header"><span class="budget-name">${EMOJI[cat]||'📦'} ${cat}</span><span class="budget-amounts" style="color:${over?'#E24B4A':'#8C7B6E'}">${fmt(s)} / ${fmt(limit)}</span></div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
-    </div>`;
+    return `<div class="budget-item"><div class="budget-header"><span class="budget-name">${EMOJI[cat]||'📦'} ${cat}</span><span class="budget-amounts" style="color:${over?'#E24B4A':'#8C7B6E'}">${fmt(s)} / ${fmt(limit)}</span></div><div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
   }).join('');
 }
-
 function addGoal(){
   const name=document.getElementById('goal-name').value.trim();
   const target=parseFloat(document.getElementById('goal-target').value);
   const saved=parseFloat(document.getElementById('goal-saved').value)||0;
   if(!name||!target||target<=0)return;
-  goals.push({id:Date.now(),name,target,saved});
-  save('mm-goals',goals);
-  document.getElementById('goal-name').value='';
-  document.getElementById('goal-target').value='';
-  document.getElementById('goal-saved').value='';
+  goals.push({id:Date.now(),name,target,saved});save('mm-goals',goals);
+  document.getElementById('goal-name').value='';document.getElementById('goal-target').value='';document.getElementById('goal-saved').value='';
   renderGoals();
 }
-
 function addToGoal(id){
   const amt=parseFloat(prompt('Add amount (₱):'));
   if(!amt||amt<=0)return;
   const g=goals.find(g=>g.id===id);
   if(g){g.saved=Math.min(g.target,g.saved+amt);save('mm-goals',goals);renderGoals();}
 }
-
 function renderGoals(){
   document.getElementById('goals-list').innerHTML=goals.map(g=>{
     const pct=Math.round(g.saved/g.target*100);
-    return `<div class="goal-card">
-      <div class="goal-header"><div class="goal-title">${g.name}</div><div class="goal-pct">${pct}%</div></div>
-      <div class="goal-amounts">${fmt(g.saved)} saved of ${fmt(g.target)}</div>
-      <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
-      <button class="goal-add" onclick="addToGoal(${g.id})">+ Add funds</button>
-    </div>`;
+    return `<div class="goal-card"><div class="goal-header"><div class="goal-title">${g.name}</div><div class="goal-pct">${pct}%</div></div><div class="goal-amounts">${fmt(g.saved)} saved of ${fmt(g.target)}</div><div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div><button class="goal-add" onclick="addToGoal(${g.id})">+ Add funds</button></div>`;
   }).join('');
 }
-
 function renderDashboard(){
   const now=new Date().toISOString().slice(0,7);
   const monthly=transactions.filter(t=>t.date.startsWith(now));
@@ -273,34 +280,15 @@ function renderDashboard(){
   monthly.filter(t=>t.type==='expense').forEach(t=>{bycat[t.cat]=(bycat[t.cat]||0)+t.amount;});
   const cats=Object.keys(bycat),vals=cats.map(c=>bycat[c]),total=vals.reduce((a,b)=>a+b,0);
   document.getElementById('donut-total').textContent=fmt(total);
-  document.getElementById('donut-legend').innerHTML=cats.map((c,i)=>`
-    <div class="legend-item"><div class="legend-dot" style="background:${CAT_COLORS[c]}"></div><span>${c}</span><span class="legend-val">${fmt(vals[i])}</span></div>`).join('')||'<div style="font-size:12px;color:#8C7B6E">No expenses yet</div>';
+  document.getElementById('donut-legend').innerHTML=cats.map((c,i)=>`<div class="legend-item"><div class="legend-dot" style="background:${CAT_COLORS[c]}"></div><span>${c}</span><span class="legend-val">${fmt(vals[i])}</span></div>`).join('')||'<div style="font-size:12px;color:#8C7B6E">No expenses yet</div>';
   if(donutChart)donutChart.destroy();
-  donutChart=new Chart(document.getElementById('donut-chart').getContext('2d'),{
-    type:'doughnut',
-    data:{labels:cats,datasets:[{data:vals.length?vals:[1],backgroundColor:vals.length?cats.map(c=>CAT_COLORS[c]):['#EDE4D7'],borderWidth:0,hoverOffset:4}]},
-    options:{cutout:'68%',plugins:{legend:{display:false},tooltip:{enabled:!!vals.length}},animation:{duration:400}}
-  });
+  donutChart=new Chart(document.getElementById('donut-chart').getContext('2d'),{type:'doughnut',data:{labels:cats,datasets:[{data:vals.length?vals:[1],backgroundColor:vals.length?cats.map(c=>CAT_COLORS[c]):['#EDE4D7'],borderWidth:0,hoverOffset:4}]},options:{cutout:'68%',plugins:{legend:{display:false},tooltip:{enabled:!!vals.length}},animation:{duration:400}}});
   const months=[],incArr=[],expArr=[];
-  for(let i=5;i>=0;i--){
-    const d=new Date(2026,8-i,1),key=d.toISOString().slice(0,7);
-    months.push(d.toLocaleString('default',{month:'short'}));
-    const m=transactions.filter(t=>t.date.startsWith(key));
-    incArr.push(m.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0));
-    expArr.push(m.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0));
-  }
+  for(let i=5;i>=0;i--){const d=new Date(2026,8-i,1),key=d.toISOString().slice(0,7);months.push(d.toLocaleString('default',{month:'short'}));const m=transactions.filter(t=>t.date.startsWith(key));incArr.push(m.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0));expArr.push(m.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0));}
   for(let i=0;i<5;i++){if(!incArr[i])incArr[i]=30000+Math.round(Math.random()*15000);if(!expArr[i])expArr[i]=15000+Math.round(Math.random()*10000);}
   if(trendChart)trendChart.destroy();
-  trendChart=new Chart(document.getElementById('trend-chart').getContext('2d'),{
-    type:'bar',
-    data:{labels:months,datasets:[
-      {label:'Income',data:incArr,backgroundColor:'#1D9E7533',borderColor:'#1D9E75',borderWidth:1.5,borderRadius:4},
-      {label:'Expenses',data:expArr,backgroundColor:'#E24B4A22',borderColor:'#E24B4A',borderWidth:1.5,borderRadius:4}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:12,font:{size:11}}}},scales:{y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{size:11},callback:v=>'₱'+Math.round(v/1000)+'k'}},x:{grid:{display:false},ticks:{font:{size:11}}}}}
-  });
+  trendChart=new Chart(document.getElementById('trend-chart').getContext('2d'),{type:'bar',data:{labels:months,datasets:[{label:'Income',data:incArr,backgroundColor:'#1D9E7533',borderColor:'#1D9E75',borderWidth:1.5,borderRadius:4},{label:'Expenses',data:expArr,backgroundColor:'#E24B4A22',borderColor:'#E24B4A',borderWidth:1.5,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:12,font:{size:11}}}},scales:{y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{size:11},callback:v=>'₱'+Math.round(v/1000)+'k'}},x:{grid:{display:false},ticks:{font:{size:11}}}}}});
 }
-
 document.getElementById('month-label').textContent=new Date().toLocaleString('default',{month:'long',year:'numeric'});
 renderTransactions();renderBudget();renderGoals();renderDashboard();
 </script>
