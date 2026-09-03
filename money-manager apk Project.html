@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Money Manager</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--c-income:#1D9E75;--c-expense:#E24B4A;--c-saving:#378ADD;--c-budget:#BA7517}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5EFE6;color:#2C2520;font-size:13px}
+.app{display:flex;flex-direction:column;min-height:100vh}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #DDD3C5;background:#EDE4D7}
+.topbar h1{font-size:15px;font-weight:600;color:#C4956A}
+.tabs{display:flex;gap:4px;padding:10px 20px 0;background:#EDE4D7;border-bottom:1px solid #DDD3C5}
+.tab{padding:8px 14px;font-size:13px;color:#8C7B6E;cursor:pointer;border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
+.tab.active{color:#C4956A;border-bottom-color:#C4956A;font-weight:500}
+.tab:hover:not(.active){color:#2C2520}
+.page{display:none;padding:20px;flex-direction:column;gap:16px}
+.page.active{display:flex}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat-card{background:#F9F4EE;border:1px solid #DDD3C5;border-radius:10px;padding:14px 16px}
+.stat-label{font-size:11px;color:#8C7B6E;margin-bottom:6px}
+.stat-val{font-size:20px;font-weight:600;color:#2C2520}
+.stat-val.income{color:#1D9E75}
+.stat-val.expense{color:#E24B4A}
+.stat-val.saving{color:#378ADD}
+.section-title{font-size:13px;font-weight:500;color:#8C7B6E;margin-bottom:4px}
+.card{background:#F9F4EE;border:1px solid #DDD3C5;border-radius:12px;padding:16px}
+.tx-list{display:flex;flex-direction:column;gap:1px}
+.tx-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #DDD3C5}
+.tx-item:last-child{border-bottom:none}
+.tx-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.tx-info{flex:1;min-width:0}
+.tx-name{font-size:14px;color:#2C2520}
+.tx-date{font-size:12px;color:#8C7B6E;margin-top:2px}
+.tx-amount{font-size:14px;font-weight:500}
+.tx-amount.pos{color:#1D9E75}
+.tx-amount.neg{color:#E24B4A}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12px;color:#8C7B6E}
+.field input,.field select{font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #DDD3C5;background:#F5EFE6;color:#2C2520;width:100%;font-family:inherit}
+.field input:focus,.field select:focus{outline:none;border-color:#C4956A}
+.submit-btn{margin-top:4px;padding:9px 16px;background:#C4956A;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;width:100%;font-family:inherit}
+.submit-btn:hover{background:#D4A574}
+.budget-item{margin-bottom:14px}
+.budget-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.budget-name{font-size:13px;font-weight:500;color:#2C2520}
+.budget-amounts{font-size:12px;color:#8C7B6E}
+.progress-bar{height:6px;background:#EDE4D7;border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width .4s}
+.goal-card{background:#F9F4EE;border:1px solid #DDD3C5;border-radius:12px;padding:14px 16px}
+.goal-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.goal-title{font-size:14px;font-weight:500;color:#2C2520}
+.goal-pct{font-size:13px;color:#C4956A;font-weight:500}
+.goal-amounts{font-size:12px;color:#8C7B6E;margin-bottom:8px}
+.goal-bar{height:8px;background:#EDE4D7;border-radius:4px;overflow:hidden}
+.goal-fill{height:100%;border-radius:4px;background:#378ADD}
+.goal-add{font-size:12px;color:#C4956A;border:none;background:none;cursor:pointer;padding:0;margin-top:8px;font-family:inherit}
+.chart-wrap{position:relative;height:180px}
+.donut-row{display:flex;gap:16px;align-items:center}
+.donut-wrap{position:relative;flex-shrink:0}
+.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.donut-center-val{font-size:18px;font-weight:600;color:#2C2520}
+.donut-center-label{font-size:11px;color:#8C7B6E}
+.legend{display:flex;flex-direction:column;gap:8px;flex:1}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:#8C7B6E}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.legend-val{margin-left:auto;font-weight:500;color:#2C2520}
+@media(max-width:500px){.summary-grid{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.add-form{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>💰 Money Manager</h1>
+    <span style="font-size:12px;color:#8C7B6E" id="month-label"></span>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="showPage('dashboard',this)">Overview</button>
+    <button class="tab" onclick="showPage('transactions',this)">Transactions</button>
+    <button class="tab" onclick="showPage('budget',this)">Budget</button>
+    <button class="tab" onclick="showPage('goals',this)">Goals</button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="page active" id="page-dashboard">
+    <div class="summary-grid">
+      <div class="stat-card"><div class="stat-label">Income</div><div class="stat-val income" id="dash-income">₱0</div></div>
+      <div class="stat-card"><div class="stat-label">Expenses</div><div class="stat-val expense" id="dash-expense">₱0</div></div>
+      <div class="stat-card"><div class="stat-label">Balance</div><div class="stat-val saving" id="dash-balance">₱0</div></div>
+    </div>
+    <div class="section-title">Spending by category</div>
+    <div class="card">
+      <div class="donut-row">
+        <div class="donut-wrap"><canvas id="donut-chart" width="120" height="120"></canvas><div class="donut-center"><div class="donut-center-val" id="donut-total">₱0</div><div class="donut-center-label">spent</div></div></div>
+        <div class="legend" id="donut-legend"></div>
+      </div>
+    </div>
+    <div class="section-title">Monthly trend</div>
+    <div class="card"><div class="chart-wrap"><canvas id="trend-chart"></canvas></div></div>
+  </div>
+
+  <!-- TRANSACTIONS -->
+  <div class="page" id="page-transactions">
+    <div class="card" style="padding:14px 16px">
+      <div style="font-size:13px;font-weight:500;color:#2C2520;margin-bottom:12px">Add transaction</div>
+      <div class="form-row">
+        <div class="field"><label>Description</label><input type="text" id="tx-desc" placeholder="e.g. Grocery run"></div>
+        <div class="field"><label>Amount (₱)</label><input type="number" id="tx-amount" placeholder="0" min="0"></div>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <div class="field"><label>Type</label><select id="tx-type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
+        <div class="field"><label>Category</label><select id="tx-cat"><option>Food</option><option>Transport</option><option>Shopping</option><option>Entertainment</option><option>Bills</option><option>Health</option><option>Salary</option><option>Other</option></select></div>
+      </div>
+      <button class="submit-btn" onclick="addTransaction()" style="margin-top:12px">Add transaction</button>
+    </div>
+    <div class="section-title">Recent</div>
+    <div class="card"><div class="tx-list" id="tx-list"></div></div>
+  </div>
+
+  <!-- BUDGET -->
+  <div class="page" id="page-budget">
+    <div class="card">
+      <div style="font-size:13px;font-weight:500;color:#2C2520;margin-bottom:14px">Monthly limits</div>
+      <div id="budget-list"></div>
+      <div class="form-row" style="margin-top:12px;padding-top:12px;border-top:1px solid #DDD3C5">
+        <div class="field"><label>Category</label><select id="budget-cat"><option>Food</option><option>Transport</option><option>Shopping</option><option>Entertainment</option><option>Bills</option><option>Health</option><option>Other</option></select></div>
+        <div class="field"><label>Limit (₱)</label><input type="number" id="budget-limit" placeholder="0" min="0"></div>
+      </div>
+      <button class="submit-btn" onclick="setBudget()" style="margin-top:10px">Set limit</button>
+    </div>
+  </div>
+
+  <!-- GOALS -->
+  <div class="page" id="page-goals">
+    <div id="goals-list" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:500;color:#2C2520;margin-bottom:12px">New goal</div>
+      <div class="field" style="margin-bottom:10px"><label>Goal name</label><input type="text" id="goal-name" placeholder="e.g. Emergency fund"></div>
+      <div class="form-row">
+        <div class="field"><label>Target (₱)</label><input type="number" id="goal-target" placeholder="0" min="0"></div>
+        <div class="field"><label>Saved so far (₱)</label><input type="number" id="goal-saved" placeholder="0" min="0"></div>
+      </div>
+      <button class="submit-btn" onclick="addGoal()" style="margin-top:12px">Add goal</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CAT_COLORS={Food:'#1D9E75',Transport:'#378ADD',Shopping:'#BA7517',Entertainment:'#D85A30',Bills:'#A32D2D',Health:'#3B6D11',Salary:'#1D9E75',Other:'#8C7B6E'};
+const EMOJI={Food:'🍜',Transport:'🚌',Shopping:'🛍️',Entertainment:'🎮',Bills:'💡',Health:'💊',Salary:'💼',Other:'📦'};
+
+function load(k,def){try{return JSON.parse(localStorage.getItem(k))||def;}catch{return def;}}
+function save(k,v){localStorage.setItem(k,JSON.stringify(v));}
+
+let transactions=load('mm-tx',[
+  {id:1,desc:'Monthly salary',amount:45000,type:'income',cat:'Salary',date:'2026-09-01'},
+  {id:2,desc:'Grocery run',amount:2300,type:'expense',cat:'Food',date:'2026-09-01'},
+  {id:3,desc:'Meralco bill',amount:1800,type:'expense',cat:'Bills',date:'2026-09-02'},
+  {id:4,desc:'Commute load',amount:400,type:'expense',cat:'Transport',date:'2026-09-02'},
+]);
+let budgets=load('mm-budgets',{Food:5000,Transport:2000,Entertainment:3000,Bills:3000});
+let goals=load('mm-goals',[
+  {id:1,name:'Emergency fund',target:50000,saved:18500},
+  {id:2,name:'Vacation fund',target:20000,saved:6000},
+]);
+
+let donutChart,trendChart;
+function fmt(n){return '₱'+Math.round(n).toLocaleString();}
+
+function showPage(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(el)el.classList.add('active');
+  if(id==='dashboard')renderDashboard();
+  if(id==='budget')renderBudget();
+  if(id==='goals')renderGoals();
+  if(id==='transactions')renderTransactions();
+}
+
+function addTransaction(){
+  const desc=document.getElementById('tx-desc').value.trim();
+  const amount=parseFloat(document.getElementById('tx-amount').value);
+  const type=document.getElementById('tx-type').value;
+  const cat=document.getElementById('tx-cat').value;
+  if(!desc||!amount||amount<=0)return;
+  const today=new Date().toISOString().split('T')[0];
+  transactions.unshift({id:Date.now(),desc,amount,type,cat,date:today});
+  save('mm-tx',transactions);
+  document.getElementById('tx-desc').value='';
+  document.getElementById('tx-amount').value='';
+  renderTransactions();
+}
+
+function renderTransactions(){
+  document.getElementById('tx-list').innerHTML=transactions.slice(0,20).map(t=>`
+    <div class="tx-item">
+      <div class="tx-icon" style="background:${CAT_COLORS[t.cat]}22">${EMOJI[t.cat]||'📦'}</div>
+      <div class="tx-info"><div class="tx-name">${t.desc}</div><div class="tx-date">${t.cat} · ${t.date}</div></div>
+      <div class="tx-amount ${t.type==='income'?'pos':'neg'}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</div>
+    </div>`).join('');
+}
+
+function setBudget(){
+  const cat=document.getElementById('budget-cat').value;
+  const limit=parseFloat(document.getElementById('budget-limit').value);
+  if(!limit||limit<=0)return;
+  budgets[cat]=limit;
+  save('mm-budgets',budgets);
+  document.getElementById('budget-limit').value='';
+  renderBudget();
+}
+
+function renderBudget(){
+  const now=new Date().toISOString().slice(0,7);
+  const spent={};
+  transactions.filter(t=>t.type==='expense'&&t.date.startsWith(now)).forEach(t=>{spent[t.cat]=(spent[t.cat]||0)+t.amount;});
+  document.getElementById('budget-list').innerHTML=Object.entries(budgets).map(([cat,limit])=>{
+    const s=spent[cat]||0,pct=Math.min(100,Math.round(s/limit*100)),over=s>limit;
+    const color=over?'#E24B4A':pct>75?'#BA7517':'#1D9E75';
+    return `<div class="budget-item">
+      <div class="budget-header"><span class="budget-name">${EMOJI[cat]||'📦'} ${cat}</span><span class="budget-amounts" style="color:${over?'#E24B4A':'#8C7B6E'}">${fmt(s)} / ${fmt(limit)}</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function addGoal(){
+  const name=document.getElementById('goal-name').value.trim();
+  const target=parseFloat(document.getElementById('goal-target').value);
+  const saved=parseFloat(document.getElementById('goal-saved').value)||0;
+  if(!name||!target||target<=0)return;
+  goals.push({id:Date.now(),name,target,saved});
+  save('mm-goals',goals);
+  document.getElementById('goal-name').value='';
+  document.getElementById('goal-target').value='';
+  document.getElementById('goal-saved').value='';
+  renderGoals();
+}
+
+function addToGoal(id){
+  const amt=parseFloat(prompt('Add amount (₱):'));
+  if(!amt||amt<=0)return;
+  const g=goals.find(g=>g.id===id);
+  if(g){g.saved=Math.min(g.target,g.saved+amt);save('mm-goals',goals);renderGoals();}
+}
+
+function renderGoals(){
+  document.getElementById('goals-list').innerHTML=goals.map(g=>{
+    const pct=Math.round(g.saved/g.target*100);
+    return `<div class="goal-card">
+      <div class="goal-header"><div class="goal-title">${g.name}</div><div class="goal-pct">${pct}%</div></div>
+      <div class="goal-amounts">${fmt(g.saved)} saved of ${fmt(g.target)}</div>
+      <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
+      <button class="goal-add" onclick="addToGoal(${g.id})">+ Add funds</button>
+    </div>`;
+  }).join('');
+}
+
+function renderDashboard(){
+  const now=new Date().toISOString().slice(0,7);
+  const monthly=transactions.filter(t=>t.date.startsWith(now));
+  const income=monthly.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
+  const expense=monthly.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0);
+  document.getElementById('dash-income').textContent=fmt(income);
+  document.getElementById('dash-expense').textContent=fmt(expense);
+  document.getElementById('dash-balance').textContent=fmt(income-expense);
+  const bycat={};
+  monthly.filter(t=>t.type==='expense').forEach(t=>{bycat[t.cat]=(bycat[t.cat]||0)+t.amount;});
+  const cats=Object.keys(bycat),vals=cats.map(c=>bycat[c]),total=vals.reduce((a,b)=>a+b,0);
+  document.getElementById('donut-total').textContent=fmt(total);
+  document.getElementById('donut-legend').innerHTML=cats.map((c,i)=>`
+    <div class="legend-item"><div class="legend-dot" style="background:${CAT_COLORS[c]}"></div><span>${c}</span><span class="legend-val">${fmt(vals[i])}</span></div>`).join('')||'<div style="font-size:12px;color:#8C7B6E">No expenses yet</div>';
+  if(donutChart)donutChart.destroy();
+  donutChart=new Chart(document.getElementById('donut-chart').getContext('2d'),{
+    type:'doughnut',
+    data:{labels:cats,datasets:[{data:vals.length?vals:[1],backgroundColor:vals.length?cats.map(c=>CAT_COLORS[c]):['#EDE4D7'],borderWidth:0,hoverOffset:4}]},
+    options:{cutout:'68%',plugins:{legend:{display:false},tooltip:{enabled:!!vals.length}},animation:{duration:400}}
+  });
+  const months=[],incArr=[],expArr=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(2026,8-i,1),key=d.toISOString().slice(0,7);
+    months.push(d.toLocaleString('default',{month:'short'}));
+    const m=transactions.filter(t=>t.date.startsWith(key));
+    incArr.push(m.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0));
+    expArr.push(m.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0));
+  }
+  for(let i=0;i<5;i++){if(!incArr[i])incArr[i]=30000+Math.round(Math.random()*15000);if(!expArr[i])expArr[i]=15000+Math.round(Math.random()*10000);}
+  if(trendChart)trendChart.destroy();
+  trendChart=new Chart(document.getElementById('trend-chart').getContext('2d'),{
+    type:'bar',
+    data:{labels:months,datasets:[
+      {label:'Income',data:incArr,backgroundColor:'#1D9E7533',borderColor:'#1D9E75',borderWidth:1.5,borderRadius:4},
+      {label:'Expenses',data:expArr,backgroundColor:'#E24B4A22',borderColor:'#E24B4A',borderWidth:1.5,borderRadius:4}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:12,font:{size:11}}}},scales:{y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{size:11},callback:v=>'₱'+Math.round(v/1000)+'k'}},x:{grid:{display:false},ticks:{font:{size:11}}}}}
+  });
+}
+
+document.getElementById('month-label').textContent=new Date().toLocaleString('default',{month:'long',year:'numeric'});
+renderTransactions();renderBudget();renderGoals();renderDashboard();
+</script>
+</body>
+</html>
