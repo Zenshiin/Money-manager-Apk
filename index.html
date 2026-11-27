@@ -106,6 +106,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 html,body{overflow-x:hidden;overscroll-behavior-x:none;max-width:100%}
 body,.app{touch-action:pan-y pinch-zoom}
 .app{overflow-x:hidden}
+
+.del-btn{border:none;background:none;color:#8C7B6E;font-size:16px;padding:4px;cursor:pointer}
+.del-btn:hover{color:#E24B4A}
+.modal{position:fixed;inset:0;z-index:100;background:rgba(44,37,32,.45);display:none;align-items:center;justify-content:center;padding:24px}
+.modal.show{display:flex}
+.modal-box{width:100%;max-width:290px;background:#F9F4EE;border:1px solid #DDD3C5;border-radius:14px;padding:18px;box-shadow:0 10px 30px rgba(44,37,32,.25)}
+.modal-title{font-size:14px;font-weight:600;color:#C4956A;margin-bottom:6px}
+.modal-msg{font-size:13px;color:#2C2520;margin-bottom:14px;line-height:1.4}
+#modal-input{width:100%;font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #DDD3C5;background:#F5EFE6;color:#2C2520;margin-bottom:14px;font-family:inherit}
+.modal-actions{display:flex;gap:8px}
+.modal-btn{flex:1;padding:9px;border:none;border-radius:8px;background:#C4956A;color:#fff;font-size:13px;font-family:inherit;cursor:pointer}
+.modal-btn.ghost{background:#EDE4D7;color:#8C7B6E}
+.modal-btn.danger{background:#E24B4A}
 /* Install banner */
 #install-banner{display:none;align-items:center;justify-content:space-between;padding:10px 20px;background:#C4956A;color:#fff;font-size:13px}
 #install-banner button{padding:5px 14px;background:#fff;color:#C4956A;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
@@ -180,7 +193,7 @@ body,.app{touch-action:pan-y pinch-zoom}
       <div style="font-size:13px;font-weight:500;color:#2C2520;margin-bottom:14px">Monthly limits</div>
       <div id="budget-list"></div>
       <div class="form-row" style="margin-top:12px;padding-top:12px;border-top:1px solid #DDD3C5">
-        <div class="field"><label>Category</label><select id="budget-cat"><option>Food</option><option>Transport</option><option>Shopping</option><option>Entertainment</option><option>Bills</option><option>Health</option><option>Other</option></select></div>
+        <div class="field"><label>Category</label><input type="text" id="budget-cat" list="cat-options" maxlength="20" placeholder="Type or pick"><datalist id="cat-options"></datalist></div>
         <div class="field"><label>Limit (₱)</label><input type="number" id="budget-limit" placeholder="0" min="0"></div>
       </div>
       <button class="submit-btn" onclick="setBudget()" style="margin-top:10px">Set limit</button>
@@ -201,6 +214,17 @@ body,.app{touch-action:pan-y pinch-zoom}
   </div>
 </div>
 
+<div id="modal" class="modal">
+  <div class="modal-box" role="dialog" aria-modal="true">
+    <div class="modal-title">Money Manager</div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <input type="number" id="modal-input" inputmode="decimal" min="0" placeholder="0" style="display:none">
+    <div class="modal-actions">
+      <button class="modal-btn ghost" id="modal-cancel">Cancel</button>
+      <button class="modal-btn" id="modal-ok">OK</button>
+    </div>
+  </div>
+</div>
 <script>
 // PWA Install
 let deferredPrompt;
@@ -281,6 +305,7 @@ function showPage(id,el){
   if(idx!==current)pg.classList.add(idx>current?'from-right':'from-left');
   (el||document.querySelectorAll('.tab')[idx]).classList.add('active');
   current=idx;
+  try{localStorage.setItem('mm-tab',id);}catch(e){}
   window.scrollTo(0,0);
   if(id==='dashboard'){renderTransactions();renderDashboard();}
   if(id==='budget')renderBudget();
@@ -342,8 +367,8 @@ function cancelEdit(){
   document.getElementById('tx-submit').textContent='Add transaction';
   document.getElementById('tx-cancel').style.display='none';
 }
-function deleteTx(id){
-  if(!confirm('Delete this transaction?'))return;
+async function deleteTx(id){
+  if(!await askConfirm('Delete this transaction?'))return;
   transactions=transactions.filter(t=>t.id!==id);
   save('mm-tx',transactions);
   if(editingId===id)cancelEdit();
@@ -359,7 +384,7 @@ function renderTransactions(){
     </div>`).join('')||'<div style="font-size:12px;color:#8C7B6E;padding:6px 0">No transactions yet</div>';
 }
 function exportData(){
-  const data={app:'money-manager',version:1,exported:new Date().toISOString(),transactions,budgets,goals,templates};
+  const data={app:'money-manager',version:1,exported:new Date().toISOString(),transactions,budgets,goals,templates,customCats};
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
   a.download='money-manager-backup-'+localDate()+'.json';
@@ -368,9 +393,10 @@ function exportData(){
 function importData(ev){
   const f=ev.target.files[0];if(!f)return;
   const r=new FileReader();
-  r.onload=()=>{
+  r.onload=async()=>{
     try{
       const d=JSON.parse(r.result);
+      (Array.isArray(d.customCats)?d.customCats:[]).slice(0,30).forEach(c=>addCat(c));
       const known=c=>Object.prototype.hasOwnProperty.call(CAT_COLORS,c);
       const kind=x=>x&&(x.type==='income'||x.type==='expense')&&known(x.cat);
       if(!Array.isArray(d.transactions)||!d.budgets||!Array.isArray(d.goals))throw new Error('bad');
@@ -378,34 +404,81 @@ function importData(ev){
       const bd=Object.fromEntries(Object.entries(d.budgets).filter(([k,v])=>known(k)&&Number(v)>0).map(([k,v])=>[k,Number(v)]));
       const gl=d.goals.filter(g=>g&&Number(g.target)>0).map(g=>({id:Number(g.id)||Date.now()+Math.random(),name:String(g.name).slice(0,60),target:Number(g.target),saved:Math.max(0,Math.min(Number(g.target),Number(g.saved)||0))}));
       const tp=(Array.isArray(d.templates)?d.templates:[]).filter(kind).map(x=>({id:Number(x.id)||Date.now()+Math.random(),desc:String(x.desc).slice(0,80),type:x.type,cat:x.cat}));
-      if(!confirm('Replace everything in the app with this backup?'))return;
+      if(!await askConfirm('Replace everything in the app with this backup?','Replace'))return;
       transactions=tx;budgets=bd;goals=gl;templates=tp;
-      save('mm-tx',transactions);save('mm-budgets',budgets);save('mm-goals',goals);save('mm-templates',templates);
+      save('mm-tx',transactions);save('mm-budgets',budgets);save('mm-goals',goals);save('mm-templates',templates);save('mm-cats',customCats);fillCatOptions();
       renderTransactions();renderTemplates();renderBudget();renderGoals();renderDashboard();
-      alert('Backup restored.');
-    }catch(e){alert('That file is not a valid Money Manager backup.');}
+      notify('Backup restored.');
+    }catch(e){notify('That file is not a valid Money Manager backup.');}
   };
   r.readAsText(f);ev.target.value='';
 }
 
+const CUSTOM_COLORS=['#7B6FA8','#4A9AA8','#B5656B','#8A9A3F','#C27B3C','#5B7DB1'];
+let customCats=[];
+function addCat(raw){
+  const name=String(raw).replace(/[^\p{L}\p{N} \-]/gu,'').trim().slice(0,20);
+  if(!name)return '';
+  const hit=Object.keys(CAT_COLORS).find(k=>k.toLowerCase()===name.toLowerCase());
+  if(hit)return hit;
+  CAT_COLORS[name]=CUSTOM_COLORS[customCats.length%CUSTOM_COLORS.length];
+  EMOJI[name]='🏷️';
+  customCats.push(name);
+  return name;
+}
+load('mm-cats',[]).slice(0,30).forEach(c=>addCat(c));
+function fillCatOptions(){
+  const sel=document.getElementById('tx-cat'),v=sel.value,names=Object.keys(CAT_COLORS);
+  sel.innerHTML=names.map(n=>`<option>${n}</option>`).join('');
+  if(names.includes(v))sel.value=v;
+  document.getElementById('cat-options').innerHTML=names.filter(n=>n!=='Salary').map(n=>`<option value="${n}">`).join('');
+}
 function setBudget(){
-  const cat=document.getElementById('budget-cat').value;
+  const name=addCat(document.getElementById('budget-cat').value);
   const limit=parseFloat(document.getElementById('budget-limit').value);
-  if(!limit||limit<=0)return;
-  budgets[cat]=limit;save('mm-budgets',budgets);
+  if(!name||!limit||limit<=0)return;
+  save('mm-cats',customCats);
+  budgets[name]=limit;save('mm-budgets',budgets);
+  document.getElementById('budget-cat').value='';
   document.getElementById('budget-limit').value='';
-  renderBudget();
+  fillCatOptions();renderBudget();
+}
+async function deleteBudget(cat){
+  if(!await askConfirm('Delete the '+cat+' budget?'))return;
+  delete budgets[cat];save('mm-budgets',budgets);renderBudget();
 }
 function renderBudget(){
-  const now=localYM();
-  const spent={};
+  const now=localYM(),spent={};
   transactions.filter(t=>t.type==='expense'&&t.date.startsWith(now)).forEach(t=>{spent[t.cat]=(spent[t.cat]||0)+t.amount;});
   document.getElementById('budget-list').innerHTML=Object.entries(budgets).map(([cat,limit])=>{
     const s=spent[cat]||0,pct=Math.min(100,Math.round(s/limit*100)),over=s>limit;
     const color=over?'#E24B4A':pct>75?'#BA7517':'#1D9E75';
-    return `<div class="budget-item"><div class="budget-header"><span class="budget-name">${EMOJI[cat]||'📦'} ${cat}</span><span class="budget-amounts" style="color:${over?'#E24B4A':'#8C7B6E'}">${fmt(s)} / ${fmt(limit)}</span></div><div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
-  }).join('');
+    return `<div class="budget-item"><div class="budget-header"><span class="budget-name">${EMOJI[cat]||'🏷️'} ${esc(cat)}</span><span style="display:flex;align-items:center;gap:6px"><span class="budget-amounts" style="color:${over?'#E24B4A':'#8C7B6E'}">${fmt(s)} / ${fmt(limit)}</span><button class="del-btn" onclick="deleteBudget('${cat}')" aria-label="Delete budget"><i class="ti ti-trash"></i></button></span></div><div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
+  }).join('')||'<div class="chip-empty">No budgets yet. Type a target below.</div>';
 }
+
+// Themed popups (replace the browser's confirm/alert/prompt)
+function showModal({msg,ok='OK',cancel=true,input=false,danger=false}){
+  return new Promise(res=>{
+    const m=document.getElementById('modal'),inp=document.getElementById('modal-input'),okB=document.getElementById('modal-ok'),caB=document.getElementById('modal-cancel');
+    document.getElementById('modal-msg').textContent=msg;
+    okB.textContent=ok;okB.className='modal-btn'+(danger?' danger':'');
+    caB.style.display=cancel?'':'none';
+    inp.style.display=input?'block':'none';inp.value='';
+    const done=v=>{m.classList.remove('show');okB.onclick=caB.onclick=m.onclick=null;document.removeEventListener('keydown',key);res(v);};
+    const key=e=>{if(e.key==='Escape')done(null);if(e.key==='Enter')okB.click();};
+    okB.onclick=()=>done(input?inp.value:true);
+    caB.onclick=()=>done(null);
+    m.onclick=e=>{if(e.target===m)done(null);};
+    document.addEventListener('keydown',key);
+    m.classList.add('show');
+    if(input)setTimeout(()=>inp.focus(),50);
+  });
+}
+const askConfirm=(msg,ok='Delete')=>showModal({msg,ok,danger:true}).then(v=>v===true);
+const notify=msg=>showModal({msg,cancel:false});
+const askAmount=msg=>showModal({msg,ok:'Add',input:true}).then(v=>v===null?null:parseFloat(v));
+
 function addGoal(){
   const name=document.getElementById('goal-name').value.trim();
   const target=parseFloat(document.getElementById('goal-target').value);
@@ -415,17 +488,21 @@ function addGoal(){
   document.getElementById('goal-name').value='';document.getElementById('goal-target').value='';document.getElementById('goal-saved').value='';
   renderGoals();
 }
-function addToGoal(id){
-  const amt=parseFloat(prompt('Add amount (₱):'));
+async function addToGoal(id){
+  const amt=await askAmount('How much do you want to add? (₱)');
   if(!amt||amt<=0)return;
   const g=goals.find(g=>g.id===id);
   if(g){g.saved=Math.min(g.target,g.saved+amt);save('mm-goals',goals);renderGoals();}
 }
+async function deleteGoal(id){
+  if(!await askConfirm('Delete this goal?'))return;
+  goals=goals.filter(g=>g.id!==id);save('mm-goals',goals);renderGoals();
+}
 function renderGoals(){
   document.getElementById('goals-list').innerHTML=goals.map(g=>{
     const pct=Math.round(g.saved/g.target*100);
-    return `<div class="goal-card"><div class="goal-header"><div class="goal-title">${esc(g.name)}</div><div class="goal-pct">${pct}%</div></div><div class="goal-amounts">${fmt(g.saved)} saved of ${fmt(g.target)}</div><div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div><button class="goal-add" onclick="addToGoal(${g.id})">+ Add funds</button></div>`;
-  }).join('');
+    return `<div class="goal-card"><div class="goal-header"><div class="goal-title">${esc(g.name)}</div><div style="display:flex;align-items:center;gap:6px"><div class="goal-pct">${pct}%</div><button class="del-btn" onclick="deleteGoal(${g.id})" aria-label="Delete goal"><i class="ti ti-trash"></i></button></div></div><div class="goal-amounts">${fmt(g.saved)} saved of ${fmt(g.target)}</div><div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div><button class="goal-add" onclick="addToGoal(${g.id})">+ Add funds</button></div>`;
+  }).join('')||'<div class="chip-empty">No goals yet.</div>';
 }
 function renderDashboard(){
   const now=localYM();
@@ -453,6 +530,14 @@ function renderDashboard(){
 }
 document.getElementById('month-label').textContent=new Date().toLocaleString('default',{month:'long',year:'numeric'});
 renderTransactions();renderTemplates();renderBudget();renderGoals();renderDashboard();
+fillCatOptions();
+(function(){
+  let t=null,y=0;
+  try{t=localStorage.getItem('mm-tab');y=parseInt(localStorage.getItem('mm-scroll'))||0;}catch(e){}
+  if(TABS.includes(t)&&t!=='dashboard')showPage(t);
+  requestAnimationFrame(()=>window.scrollTo(0,y));
+})();
+window.addEventListener('scroll',()=>{clearTimeout(window._st);window._st=setTimeout(()=>{try{localStorage.setItem('mm-scroll',window.scrollY);}catch(e){}},150);},{passive:true});
 </script>
 </body>
 </html>
