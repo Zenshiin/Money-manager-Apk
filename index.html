@@ -88,6 +88,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .chip:active{background:#EDE4D7}
 .chip-x{border:none;background:none;color:#8C7B6E;font-size:15px;line-height:1;cursor:pointer;padding:0 2px}
 .chip-empty{font-size:12px;color:#8C7B6E}
+
+.tabs{position:fixed;bottom:0;left:0;right:0;z-index:20;padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));border-top:1px solid #DDD3C5;border-bottom:none;justify-content:space-around;gap:0}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;font-size:11px;border-bottom:none}
+.tab i{font-size:21px}
+.tab.active{border-bottom:none}
+.app{padding-bottom:76px}
+.summary-grid{grid-template-columns:1fr 1fr}
+.summary-grid .stat-card:nth-child(3){order:-1;grid-column:1/-1;border:none;padding:20px;background:linear-gradient(135deg,#C4956A,#D9AE82)}
+.summary-grid .stat-card:nth-child(3) .stat-label{color:rgba(255,255,255,.85);font-size:12px}
+.summary-grid .stat-card:nth-child(3) .stat-val{color:#fff;font-size:34px}
+.hero-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.35);margin-top:14px;overflow:hidden}
+#hero-fill{height:100%;width:0;background:#fff;border-radius:3px;transition:width .4s}
+.hero-sub{font-size:11px;color:rgba(255,255,255,.9);margin-top:6px}
+.tx-actions{display:flex}
+.tx-actions button{border:none;background:none;color:#8C7B6E;font-size:16px;padding:6px;cursor:pointer}
+html,body{overflow-x:hidden;overscroll-behavior-x:none;max-width:100%}
+body,.app{touch-action:pan-y pinch-zoom}
+.app{overflow-x:hidden}
 /* Install banner */
 #install-banner{display:none;align-items:center;justify-content:space-between;padding:10px 20px;background:#C4956A;color:#fff;font-size:13px}
 #install-banner button{padding:5px 14px;background:#fff;color:#C4956A;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
@@ -105,17 +123,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <span style="font-size:12px;color:#8C7B6E" id="month-label"></span>
   </div>
   <div class="tabs">
-    <button class="tab active" onclick="showPage('dashboard',this)">Overview</button>
-    <button class="tab" onclick="showPage('transactions',this)">Transactions</button>
-    <button class="tab" onclick="showPage('budget',this)">Budget</button>
-    <button class="tab" onclick="showPage('goals',this)">Goals</button>
+    <button class="tab active" onclick="showPage('dashboard',this)"><i class="ti ti-home"></i>Overview</button>
+    <button class="tab" onclick="showPage('transactions',this)"><i class="ti ti-arrows-exchange"></i>Transactions</button>
+    <button class="tab" onclick="showPage('budget',this)"><i class="ti ti-chart-pie"></i>Budget</button>
+    <button class="tab" onclick="showPage('goals',this)"><i class="ti ti-target"></i>Goals</button>
   </div>
 
   <div class="page active" id="page-dashboard">
     <div class="summary-grid">
       <div class="stat-card"><div class="stat-label">Income</div><div class="stat-val income" id="dash-income">₱0</div></div>
       <div class="stat-card"><div class="stat-label">Expenses</div><div class="stat-val expense" id="dash-expense">₱0</div></div>
-      <div class="stat-card"><div class="stat-label">Balance</div><div class="stat-val saving" id="dash-balance">₱0</div></div>
+      <div class="stat-card"><div class="stat-label">Balance this month</div><div class="stat-val saving" id="dash-balance">₱0</div><div class="hero-bar"><div id="hero-fill"></div></div><div class="hero-sub" id="hero-sub"></div></div>
     </div>
     <div class="section-title">Recent</div>
     <div class="card"><div class="tx-list" id="tx-list"></div></div>
@@ -128,6 +146,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
     <div class="section-title">Monthly trend</div>
     <div class="card"><div class="chart-wrap"><canvas id="trend-chart"></canvas></div></div>
+    <div class="section-title">Backup</div>
+    <div class="card">
+      <div style="font-size:12px;color:#8C7B6E;margin-bottom:10px">Your data lives only on this device. Save a backup file now and then.</div>
+      <div class="form-row">
+        <button class="submit-btn" onclick="exportData()">Export backup</button>
+        <button class="submit-btn" style="background:#8C7B6E" onclick="document.getElementById('import-file').click()">Import backup</button>
+      </div>
+      <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="importData(event)">
+    </div>
   </div>
 
   <div class="page" id="page-transactions">
@@ -143,7 +170,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <div class="field"><label>Type</label><select id="tx-type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
         <div class="field"><label>Category</label><select id="tx-cat"><option>Food</option><option>Transport</option><option>Shopping</option><option>Entertainment</option><option>Bills</option><option>Health</option><option>Salary</option><option>Other</option></select></div>
       </div>
-      <button class="submit-btn" onclick="addTransaction()" style="margin-top:12px">Add transaction</button>
+      <button class="submit-btn" id="tx-submit" onclick="addTransaction()" style="margin-top:12px">Add transaction</button>
+      <button class="submit-btn" id="tx-cancel" onclick="cancelEdit()" style="display:none;background:#8C7B6E">Cancel edit</button>
     </div>
   </div>
 
@@ -245,6 +273,7 @@ function deleteTemplate(id,ev){
 
 function showPage(id,el){
   const idx=TABS.indexOf(id);
+  if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active','from-left','from-right'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   const pg=document.getElementById('page-'+id);
@@ -264,10 +293,8 @@ let sx=0,sy=0,st=0,skipSwipe=false;
 const appEl=document.querySelector('.app');
 appEl.addEventListener('touchstart',e=>{
   const t=e.touches[0];sx=t.clientX;sy=t.clientY;st=Date.now();
-  skipSwipe=!!e.target.closest('input,select,textarea');
 },{passive:true});
 appEl.addEventListener('touchend',e=>{
-  if(skipSwipe)return;
   const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;
   if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.5||Date.now()-st>600)return;
   const next=dx<0?current+1:current-1;
@@ -280,29 +307,85 @@ document.addEventListener('keydown',e=>{
   if(e.key==='ArrowLeft'&&current>0)showPage(TABS[current-1]);
 });
 
+function localDate(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function localYM(){return localDate().slice(0,7);}
+let editingId=null;
 function addTransaction(){
   const desc=document.getElementById('tx-desc').value.trim();
   const amount=parseFloat(document.getElementById('tx-amount').value);
   const type=document.getElementById('tx-type').value;
   const cat=document.getElementById('tx-cat').value;
   if(!desc||!amount||amount<=0)return;
-  const today=new Date().toISOString().split('T')[0];
-  transactions.unshift({id:Date.now(),desc,amount,type,cat,date:today});
+  if(editingId!==null){const t=transactions.find(x=>x.id===editingId);if(t){t.desc=desc;t.amount=amount;t.type=type;t.cat=cat;}}
+  else transactions.unshift({id:Date.now(),desc,amount,type,cat,date:localDate()});
   save('mm-tx',transactions);
   saveTemplate(desc,type,cat);
-  document.getElementById('tx-desc').value='';
-  document.getElementById('tx-amount').value='';
+  cancelEdit();
   renderTransactions();
   renderTemplates();
 }
-
+function editTx(id){
+  const t=transactions.find(x=>x.id===id);if(!t)return;
+  editingId=id;
+  showPage('transactions');
+  document.getElementById('tx-desc').value=t.desc;
+  document.getElementById('tx-amount').value=t.amount;
+  document.getElementById('tx-type').value=t.type;
+  document.getElementById('tx-cat').value=t.cat;
+  document.getElementById('tx-submit').textContent='Save changes';
+  document.getElementById('tx-cancel').style.display='block';
+}
+function cancelEdit(){
+  editingId=null;
+  document.getElementById('tx-desc').value='';
+  document.getElementById('tx-amount').value='';
+  document.getElementById('tx-submit').textContent='Add transaction';
+  document.getElementById('tx-cancel').style.display='none';
+}
+function deleteTx(id){
+  if(!confirm('Delete this transaction?'))return;
+  transactions=transactions.filter(t=>t.id!==id);
+  save('mm-tx',transactions);
+  if(editingId===id)cancelEdit();
+  renderTransactions();renderDashboard();
+}
 function renderTransactions(){
   document.getElementById('tx-list').innerHTML=transactions.slice(0,10).map(t=>`
     <div class="tx-item">
       <div class="tx-icon" style="background:${CAT_COLORS[t.cat]}22">${EMOJI[t.cat]||'📦'}</div>
       <div class="tx-info"><div class="tx-name">${esc(t.desc)}</div><div class="tx-date">${t.cat} · ${t.date}</div></div>
       <div class="tx-amount ${t.type==='income'?'pos':'neg'}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</div>
+      <div class="tx-actions"><button onclick="editTx(${t.id})" aria-label="Edit"><i class="ti ti-edit"></i></button><button onclick="deleteTx(${t.id})" aria-label="Delete"><i class="ti ti-trash"></i></button></div>
     </div>`).join('')||'<div style="font-size:12px;color:#8C7B6E;padding:6px 0">No transactions yet</div>';
+}
+function exportData(){
+  const data={app:'money-manager',version:1,exported:new Date().toISOString(),transactions,budgets,goals,templates};
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  a.download='money-manager-backup-'+localDate()+'.json';
+  document.body.appendChild(a);a.click();a.remove();
+}
+function importData(ev){
+  const f=ev.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      const known=c=>Object.prototype.hasOwnProperty.call(CAT_COLORS,c);
+      const kind=x=>x&&(x.type==='income'||x.type==='expense')&&known(x.cat);
+      if(!Array.isArray(d.transactions)||!d.budgets||!Array.isArray(d.goals))throw new Error('bad');
+      const tx=d.transactions.filter(x=>kind(x)&&Number(x.amount)>0&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)).map(x=>({id:Number(x.id)||Date.now()+Math.random(),desc:String(x.desc).slice(0,80),amount:Number(x.amount),type:x.type,cat:x.cat,date:x.date}));
+      const bd=Object.fromEntries(Object.entries(d.budgets).filter(([k,v])=>known(k)&&Number(v)>0).map(([k,v])=>[k,Number(v)]));
+      const gl=d.goals.filter(g=>g&&Number(g.target)>0).map(g=>({id:Number(g.id)||Date.now()+Math.random(),name:String(g.name).slice(0,60),target:Number(g.target),saved:Math.max(0,Math.min(Number(g.target),Number(g.saved)||0))}));
+      const tp=(Array.isArray(d.templates)?d.templates:[]).filter(kind).map(x=>({id:Number(x.id)||Date.now()+Math.random(),desc:String(x.desc).slice(0,80),type:x.type,cat:x.cat}));
+      if(!confirm('Replace everything in the app with this backup?'))return;
+      transactions=tx;budgets=bd;goals=gl;templates=tp;
+      save('mm-tx',transactions);save('mm-budgets',budgets);save('mm-goals',goals);save('mm-templates',templates);
+      renderTransactions();renderTemplates();renderBudget();renderGoals();renderDashboard();
+      alert('Backup restored.');
+    }catch(e){alert('That file is not a valid Money Manager backup.');}
+  };
+  r.readAsText(f);ev.target.value='';
 }
 
 function setBudget(){
@@ -314,7 +397,7 @@ function setBudget(){
   renderBudget();
 }
 function renderBudget(){
-  const now=new Date().toISOString().slice(0,7);
+  const now=localYM();
   const spent={};
   transactions.filter(t=>t.type==='expense'&&t.date.startsWith(now)).forEach(t=>{spent[t.cat]=(spent[t.cat]||0)+t.amount;});
   document.getElementById('budget-list').innerHTML=Object.entries(budgets).map(([cat,limit])=>{
@@ -345,13 +428,16 @@ function renderGoals(){
   }).join('');
 }
 function renderDashboard(){
-  const now=new Date().toISOString().slice(0,7);
+  const now=localYM();
   const monthly=transactions.filter(t=>t.date.startsWith(now));
   const income=monthly.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
   const expense=monthly.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0);
   document.getElementById('dash-income').textContent=fmt(income);
   document.getElementById('dash-expense').textContent=fmt(expense);
   document.getElementById('dash-balance').textContent=fmt(income-expense);
+  const spentPct=income>0?Math.min(100,Math.round(expense/income*100)):(expense>0?100:0);
+  document.getElementById('hero-fill').style.width=spentPct+'%';
+  document.getElementById('hero-sub').textContent=income>0?spentPct+'% of this month\'s income spent':'No income logged this month';
   const bycat={};
   monthly.filter(t=>t.type==='expense').forEach(t=>{bycat[t.cat]=(bycat[t.cat]||0)+t.amount;});
   const cats=Object.keys(bycat),vals=cats.map(c=>bycat[c]),total=vals.reduce((a,b)=>a+b,0);
@@ -360,8 +446,8 @@ function renderDashboard(){
   if(donutChart)donutChart.destroy();
   donutChart=new Chart(document.getElementById('donut-chart').getContext('2d'),{type:'doughnut',data:{labels:cats,datasets:[{data:vals.length?vals:[1],backgroundColor:vals.length?cats.map(c=>CAT_COLORS[c]):['#EDE4D7'],borderWidth:0,hoverOffset:4}]},options:{cutout:'68%',plugins:{legend:{display:false},tooltip:{enabled:!!vals.length}},animation:{duration:400}}});
   const months=[],incArr=[],expArr=[];
-  for(let i=5;i>=0;i--){const d=new Date(2026,8-i,1),key=d.toISOString().slice(0,7);months.push(d.toLocaleString('default',{month:'short'}));const m=transactions.filter(t=>t.date.startsWith(key));incArr.push(m.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0));expArr.push(m.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0));}
-  for(let i=0;i<5;i++){if(!incArr[i])incArr[i]=30000+Math.round(Math.random()*15000);if(!expArr[i])expArr[i]=15000+Math.round(Math.random()*10000);}
+  const nowD=new Date();
+  for(let i=5;i>=0;i--){const d=new Date(nowD.getFullYear(),nowD.getMonth()-i,1),key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');months.push(d.toLocaleString('default',{month:'short'}));const m=transactions.filter(t=>t.date.startsWith(key));incArr.push(m.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0));expArr.push(m.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount,0));}
   if(trendChart)trendChart.destroy();
   trendChart=new Chart(document.getElementById('trend-chart').getContext('2d'),{type:'bar',data:{labels:months,datasets:[{label:'Income',data:incArr,backgroundColor:'#1D9E7533',borderColor:'#1D9E75',borderWidth:1.5,borderRadius:4},{label:'Expenses',data:expArr,backgroundColor:'#E24B4A22',borderColor:'#E24B4A',borderWidth:1.5,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:12,font:{size:11}}}},scales:{y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{size:11},callback:v=>'₱'+Math.round(v/1000)+'k'}},x:{grid:{display:false},ticks:{font:{size:11}}}}}});
 }
