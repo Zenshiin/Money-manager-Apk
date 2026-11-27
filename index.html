@@ -76,6 +76,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:#8C7B6E}
 .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .legend-val{margin-left:auto;font-weight:500;color:#2C2520}
+@keyframes inR{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+@keyframes inL{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
+.page.from-right{animation:inR .25s ease}
+.page.from-left{animation:inL .25s ease}
+.saved-label{font-size:11px;color:#8C7B6E;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;max-height:112px;overflow-y:auto;margin-bottom:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 8px 6px 11px;border-radius:20px;border:1px solid #DDD3C5;background:#F5EFE6;font-size:12px;cursor:pointer;color:#2C2520}
+.chip.income{border-color:#1D9E7566}
+.chip.expense{border-color:#E24B4A44}
+.chip:active{background:#EDE4D7}
+.chip-x{border:none;background:none;color:#8C7B6E;font-size:15px;line-height:1;cursor:pointer;padding:0 2px}
+.chip-empty{font-size:12px;color:#8C7B6E}
 /* Install banner */
 #install-banner{display:none;align-items:center;justify-content:space-between;padding:10px 20px;background:#C4956A;color:#fff;font-size:13px}
 #install-banner button{padding:5px 14px;background:#fff;color:#C4956A;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
@@ -105,6 +117,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="stat-card"><div class="stat-label">Expenses</div><div class="stat-val expense" id="dash-expense">₱0</div></div>
       <div class="stat-card"><div class="stat-label">Balance</div><div class="stat-val saving" id="dash-balance">₱0</div></div>
     </div>
+    <div class="section-title">Recent</div>
+    <div class="card"><div class="tx-list" id="tx-list"></div></div>
     <div class="section-title">Spending by category</div>
     <div class="card">
       <div class="donut-row">
@@ -119,6 +133,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="page" id="page-transactions">
     <div class="card" style="padding:14px 16px">
       <div style="font-size:13px;font-weight:500;color:#2C2520;margin-bottom:12px">Add transaction</div>
+      <div class="saved-label">Saved transactions: tap one to reuse it (amount stays empty)</div>
+      <div class="chips" id="template-list"></div>
       <div class="form-row">
         <div class="field"><label>Description</label><input type="text" id="tx-desc" placeholder="e.g. Grocery run"></div>
         <div class="field"><label>Amount (₱)</label><input type="number" id="tx-amount" placeholder="0" min="0"></div>
@@ -129,8 +145,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
       <button class="submit-btn" onclick="addTransaction()" style="margin-top:12px">Add transaction</button>
     </div>
-    <div class="section-title">Recent</div>
-    <div class="card"><div class="tx-list" id="tx-list"></div></div>
   </div>
 
   <div class="page" id="page-budget">
@@ -198,16 +212,74 @@ let budgets=load('mm-budgets',{Food:5000,Transport:2000,Entertainment:3000,Bills
 let goals=load('mm-goals',[{id:1,name:'Emergency fund',target:50000,saved:18500},{id:2,name:'Vacation fund',target:20000,saved:6000}]);
 let donutChart,trendChart;
 function fmt(n){return '₱'+Math.round(n).toLocaleString();}
+const TABS=['dashboard','transactions','budget','goals'];
+let current=0;
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+// Saved transactions (description, type, category only. Never the amount)
+let templates=load('mm-templates',null);
+function saveTemplate(desc,type,cat){
+  const key=(desc+'|'+type+'|'+cat).toLowerCase();
+  if(templates.some(t=>(t.desc+'|'+t.type+'|'+t.cat).toLowerCase()===key))return;
+  templates.unshift({id:Date.now()+Math.random(),desc,type,cat});
+  templates=templates.slice(0,30);
+  save('mm-templates',templates);
+}
+if(templates===null){templates=[];[...transactions].reverse().forEach(t=>saveTemplate(t.desc,t.type,t.cat));}
+function renderTemplates(){
+  document.getElementById('template-list').innerHTML=templates.map(t=>`<span class="chip ${t.type}" role="button" onclick="useTemplate(${t.id})">${EMOJI[t.cat]||'📦'} ${esc(t.desc)}<button class="chip-x" onclick="deleteTemplate(${t.id},event)" aria-label="Remove saved transaction">×</button></span>`).join('')||'<span class="chip-empty">Nothing saved yet. Add a transaction and it will show up here.</span>';
+}
+function useTemplate(id){
+  const t=templates.find(x=>x.id===id);if(!t)return;
+  document.getElementById('tx-desc').value=t.desc;
+  document.getElementById('tx-type').value=t.type;
+  document.getElementById('tx-cat').value=t.cat;
+  const a=document.getElementById('tx-amount');a.value='';a.focus();
+}
+function deleteTemplate(id,ev){
+  ev.stopPropagation();
+  templates=templates.filter(t=>t.id!==id);
+  save('mm-templates',templates);
+  renderTemplates();
+}
+
 function showPage(id,el){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const idx=TABS.indexOf(id);
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active','from-left','from-right'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
-  if(el)el.classList.add('active');
-  if(id==='dashboard')renderDashboard();
+  const pg=document.getElementById('page-'+id);
+  pg.classList.add('active');
+  if(idx!==current)pg.classList.add(idx>current?'from-right':'from-left');
+  (el||document.querySelectorAll('.tab')[idx]).classList.add('active');
+  current=idx;
+  window.scrollTo(0,0);
+  if(id==='dashboard'){renderTransactions();renderDashboard();}
   if(id==='budget')renderBudget();
   if(id==='goals')renderGoals();
-  if(id==='transactions')renderTransactions();
+  if(id==='transactions')renderTemplates();
 }
+
+// Swipe left/right to move between tabs
+let sx=0,sy=0,st=0,skipSwipe=false;
+const appEl=document.querySelector('.app');
+appEl.addEventListener('touchstart',e=>{
+  const t=e.touches[0];sx=t.clientX;sy=t.clientY;st=Date.now();
+  skipSwipe=!!e.target.closest('input,select,textarea');
+},{passive:true});
+appEl.addEventListener('touchend',e=>{
+  if(skipSwipe)return;
+  const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;
+  if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.5||Date.now()-st>600)return;
+  const next=dx<0?current+1:current-1;
+  if(next<0||next>=TABS.length)return;
+  showPage(TABS[next]);
+},{passive:true});
+document.addEventListener('keydown',e=>{
+  if(/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
+  if(e.key==='ArrowRight'&&current<TABS.length-1)showPage(TABS[current+1]);
+  if(e.key==='ArrowLeft'&&current>0)showPage(TABS[current-1]);
+});
+
 function addTransaction(){
   const desc=document.getElementById('tx-desc').value.trim();
   const amount=parseFloat(document.getElementById('tx-amount').value);
@@ -217,18 +289,22 @@ function addTransaction(){
   const today=new Date().toISOString().split('T')[0];
   transactions.unshift({id:Date.now(),desc,amount,type,cat,date:today});
   save('mm-tx',transactions);
+  saveTemplate(desc,type,cat);
   document.getElementById('tx-desc').value='';
   document.getElementById('tx-amount').value='';
   renderTransactions();
+  renderTemplates();
 }
+
 function renderTransactions(){
-  document.getElementById('tx-list').innerHTML=transactions.slice(0,20).map(t=>`
+  document.getElementById('tx-list').innerHTML=transactions.slice(0,10).map(t=>`
     <div class="tx-item">
       <div class="tx-icon" style="background:${CAT_COLORS[t.cat]}22">${EMOJI[t.cat]||'📦'}</div>
-      <div class="tx-info"><div class="tx-name">${t.desc}</div><div class="tx-date">${t.cat} · ${t.date}</div></div>
+      <div class="tx-info"><div class="tx-name">${esc(t.desc)}</div><div class="tx-date">${t.cat} · ${t.date}</div></div>
       <div class="tx-amount ${t.type==='income'?'pos':'neg'}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</div>
-    </div>`).join('');
+    </div>`).join('')||'<div style="font-size:12px;color:#8C7B6E;padding:6px 0">No transactions yet</div>';
 }
+
 function setBudget(){
   const cat=document.getElementById('budget-cat').value;
   const limit=parseFloat(document.getElementById('budget-limit').value);
@@ -265,7 +341,7 @@ function addToGoal(id){
 function renderGoals(){
   document.getElementById('goals-list').innerHTML=goals.map(g=>{
     const pct=Math.round(g.saved/g.target*100);
-    return `<div class="goal-card"><div class="goal-header"><div class="goal-title">${g.name}</div><div class="goal-pct">${pct}%</div></div><div class="goal-amounts">${fmt(g.saved)} saved of ${fmt(g.target)}</div><div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div><button class="goal-add" onclick="addToGoal(${g.id})">+ Add funds</button></div>`;
+    return `<div class="goal-card"><div class="goal-header"><div class="goal-title">${esc(g.name)}</div><div class="goal-pct">${pct}%</div></div><div class="goal-amounts">${fmt(g.saved)} saved of ${fmt(g.target)}</div><div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div><button class="goal-add" onclick="addToGoal(${g.id})">+ Add funds</button></div>`;
   }).join('');
 }
 function renderDashboard(){
@@ -290,7 +366,7 @@ function renderDashboard(){
   trendChart=new Chart(document.getElementById('trend-chart').getContext('2d'),{type:'bar',data:{labels:months,datasets:[{label:'Income',data:incArr,backgroundColor:'#1D9E7533',borderColor:'#1D9E75',borderWidth:1.5,borderRadius:4},{label:'Expenses',data:expArr,backgroundColor:'#E24B4A22',borderColor:'#E24B4A',borderWidth:1.5,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:12,font:{size:11}}}},scales:{y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{size:11},callback:v=>'₱'+Math.round(v/1000)+'k'}},x:{grid:{display:false},ticks:{font:{size:11}}}}}});
 }
 document.getElementById('month-label').textContent=new Date().toLocaleString('default',{month:'long',year:'numeric'});
-renderTransactions();renderBudget();renderGoals();renderDashboard();
+renderTransactions();renderTemplates();renderBudget();renderGoals();renderDashboard();
 </script>
 </body>
 </html>

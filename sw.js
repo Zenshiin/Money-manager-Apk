@@ -1,4 +1,4 @@
-const CACHE = 'money-manager-v1';
+const CACHE = 'money-manager-v2';
 const ASSETS = [
   '/Money-manager-Apk/',
   '/Money-manager-Apk/index.html',
@@ -18,10 +18,16 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// Network first (so new versions show up), fall back to cache when offline
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).catch(() =>
-      caches.match('/Money-manager-Apk/index.html')
-    ))
+    fetch(e.request).then(res => {
+      const copy = res.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+      return res;
+    }).catch(() =>
+      caches.match(e.request).then(r => r || caches.match('/Money-manager-Apk/index.html'))
+    )
   );
 });
